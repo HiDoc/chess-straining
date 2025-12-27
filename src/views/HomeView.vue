@@ -19,8 +19,10 @@ const currentLineDisplay = computed(() =>
     ? repertoireStore.currentLine.join(' → ')
     : 'Start position',
 )
-const isLineCompleted = computed(() => 
-  Object.keys(repertoireStore.currentRepertoire).length === 0 && repertoireStore.currentLine.length > 0
+const isLineCompleted = computed(
+  () =>
+    Object.keys(repertoireStore.currentRepertoire).length === 0 &&
+    repertoireStore.currentLine.length > 0,
 )
 const isEditMode = computed(() => chessBoardRef.value?.isEditMode ?? false)
 
@@ -116,7 +118,6 @@ function showToast(message: string, type: 'success' | 'error' | 'info') {
 }
 
 .main-content h1 {
-  margin: 0 0 10px 0;
   color: #333;
   font-size: 1.8rem;
 }
