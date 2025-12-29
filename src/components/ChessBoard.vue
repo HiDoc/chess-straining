@@ -5,19 +5,32 @@
       @board-created="(api) => (boardApi = api)"
       @move="handleMove"
     />
+    <LineCompletePopup ref="lineCompletePopup" />
+    <TranspositionPopup ref="transpositionPopup" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive } from 'vue'
+import { ref, onMounted, computed, reactive, watch } from 'vue'
 import { Chess } from 'chess.js'
-import { TheChessboard } from 'vue3-chessboard'
+import { BoardApi, TheChessboard } from 'vue3-chessboard'
 import 'vue3-chessboard/style.css'
 import { useRepertoireStore } from '../stores/repertoire'
+import LineCompletePopup from './LineCompletePopup.vue'
+import TranspositionPopup from './TranspositionPopup.vue'
 
 const repertoireStore = useRepertoireStore()
 const game = ref(new Chess())
-const boardApi = ref<{ setPosition: (fen: string) => void } | null>(null)
+const lineCompletePopup = ref<{ show: () => void } | null>(null)
+const transpositionPopup = ref<{
+  show: (path: string[], onConfirm: () => void, onCancel: () => void) => void
+} | null>(null)
+const boardApi = ref<
+  | ({
+      setPosition: (fen: string) => void
+    } & BoardApi)
+  | null
+>(null)
 const isEditMode = ref(false)
 const lastOpponentMove = ref<string | null>(null)
 
@@ -54,6 +67,52 @@ const boardConfig = reactive({
   },
 })
 
+watch(
+  color,
+  (newColor) => {
+    boardApi.value?.toggleOrientation()
+    game.value.reset()
+    boardConfig.orientation = newColor
+    updateBoard()
+
+    if (newColor === 'black') {
+      setTimeout(() => {
+        makeOpponentMove()
+      }, 500)
+    } else {
+      const availableMoves = Object.keys(repertoireStore.currentRepertoire)
+      if (availableMoves.length > 0) {
+        emit(
+          'showToast',
+          `New session started! Available moves: ${availableMoves.join(', ')}`,
+          'info',
+        )
+      }
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => repertoireStore.gameHistory,
+  (newHistory) => {
+    const newGame = new Chess()
+    for (const move of newHistory) {
+      try {
+        newGame.move(move)
+      } catch (e) {
+        console.error(`Invalid move in history: ${move}`, e)
+      }
+    }
+
+    if (newGame.fen() !== game.value.fen()) {
+      game.value = newGame
+      updateBoard()
+    }
+  },
+  { deep: true },
+)
+
 onMounted(async () => {
   await repertoireStore.loadRepertoire()
 
@@ -72,7 +131,11 @@ onMounted(async () => {
       const availableMoves = Object.keys(repertoireStore.currentRepertoire)
       const currentTurn = getCurrentTurn()
       if (availableMoves.length > 0) {
-        emit('showToast', `Your turn! (${currentTurn} to move) Available moves: ${availableMoves.join(', ')}`, 'info')
+        emit(
+          'showToast',
+          `Your turn! (${currentTurn} to move) Available moves: ${availableMoves.join(', ')}`,
+          'info',
+        )
       } else {
         emit('showToast', 'No repertoire loaded. Use Edit Mode to add moves.', 'info')
       }
@@ -83,7 +146,7 @@ onMounted(async () => {
 function handleMove({ from, to }: { from: string; to: string }) {
   // Check whose turn it is BEFORE making the move
   const turnBeforeMove = getCurrentTurn()
-  
+
   // In normal training mode, only allow moves when it's the player's turn
   if (!isEditMode.value && turnBeforeMove !== color.value) {
     emit('showToast', `Wait for opponent's move! It's ${turnBeforeMove}'s turn.`, 'error')
@@ -110,6 +173,22 @@ function handleMove({ from, to }: { from: string; to: string }) {
     repertoireStore.makeMove(moveNotation)
     emit('showToast', `Added move ${moveNotation} to repertoire`, 'success')
     updateBoard()
+
+    // Check for transposition in Edit Mode
+    const transposition = repertoireStore.findTransposition(game.value.fen())
+    if (transposition) {
+      transpositionPopup.value?.show(
+        transposition.path,
+        () => {
+          // Confirm: Jump to transposition
+          repertoireStore.navigateToPosition(transposition.path, transposition.color)
+          emit('showToast', 'Jumped to transposition!', 'success')
+        },
+        () => {
+          // Cancel: Stay here
+        },
+      )
+    }
     return
   }
 
@@ -120,16 +199,44 @@ function handleMove({ from, to }: { from: string; to: string }) {
     emit('showToast', 'Correct move!', 'success')
     updateBoard()
 
-    // After player move, opponent should respond (unless line is completed)
-    if (Object.keys(repertoireStore.currentRepertoire).length > 0) {
-      setTimeout(() => {
-        makeOpponentMove()
-      }, 300)
+    // Check for transposition
+    const transposition = repertoireStore.findTransposition(game.value.fen())
+    if (transposition) {
+      transpositionPopup.value?.show(
+        transposition.path,
+        () => {
+          // Confirm: Jump to transposition
+          repertoireStore.navigateToPosition(transposition.path, transposition.color)
+          emit('showToast', 'Jumped to transposition!', 'success')
+        },
+        () => {
+          // Cancel: Continue here (if possible)
+          // If there are no moves here but it's a transposition, maybe we should force jump?
+          // But for now let's just stay.
+          continueAfterPlayerMove()
+        },
+      )
+      return
     }
+
+    continueAfterPlayerMove()
   } else {
     game.value.undo()
     emit('showToast', 'Not in your repertoire! Try again.', 'error')
     updateBoard()
+  }
+}
+
+function continueAfterPlayerMove() {
+  // Check if line is complete (no more moves for opponent)
+  const nextMoves = Object.keys(repertoireStore.currentRepertoire).filter((k) => k !== 'name')
+  if (nextMoves.length === 0) {
+    lineCompletePopup.value?.show()
+  } else {
+    // After player move, opponent should respond
+    setTimeout(() => {
+      makeOpponentMove()
+    }, 300)
   }
 }
 
@@ -143,9 +250,36 @@ function makeOpponentMove() {
       lastOpponentMove.value = opponentMove
       updateBoard()
       emit('showToast', `Opponent played: ${opponentMove}`, 'info')
+
+      // Check for transposition after opponent move
+      const transposition = repertoireStore.findTransposition(game.value.fen())
+      if (transposition) {
+        transpositionPopup.value?.show(
+          transposition.path,
+          () => {
+            repertoireStore.navigateToPosition(transposition.path, transposition.color)
+            emit('showToast', 'Jumped to transposition!', 'success')
+          },
+          () => {
+            // Stay here
+            checkLineComplete()
+          },
+        )
+        return
+      }
+
+      checkLineComplete()
     }
   } else {
     emit('showToast', 'No opponent responses available for this position.', 'info')
+  }
+}
+
+function checkLineComplete() {
+  // Check if line is complete (no more moves for player)
+  const nextMoves = Object.keys(repertoireStore.currentRepertoire).filter((k) => k !== 'name')
+  if (nextMoves.length === 0) {
+    lineCompletePopup.value?.show()
   }
 }
 
@@ -212,26 +346,25 @@ function newSession() {
     // Show available opening moves for white
     const availableMoves = Object.keys(repertoireStore.currentRepertoire)
     if (availableMoves.length > 0) {
-      emit('showToast', `New session started! Available moves: ${availableMoves.join(', ')}`, 'info')
+      emit(
+        'showToast',
+        `New session started! Available moves: ${availableMoves.join(', ')}`,
+        'info',
+      )
     } else {
       emit('showToast', 'No repertoire loaded. Use Edit Mode to add moves.', 'info')
     }
   }
 }
 
-function switchColor() {
+function switchColor(orientation?: 'white' | 'black') {
+  if (orientation) {
+    debugger
+    repertoireStore.startNewSession(orientation)
+    return
+  }
   const newColor = color.value === 'white' ? 'black' : 'white'
   repertoireStore.startNewSession(newColor)
-  game.value.reset()
-  boardConfig.orientation = newColor
-  updateBoard()
-
-  // If switching to black, opponent (white) should make the first move
-  if (newColor === 'black') {
-    setTimeout(() => {
-      makeOpponentMove()
-    }, 500)
-  }
 }
 
 function updateBoard() {
@@ -283,6 +416,8 @@ defineExpose({
   justify-content: center;
   padding: 20px;
   max-width: 100%;
+  max-height: 100vh;
+  overflow-y: hidden;
   width: 100%;
 }
 </style>

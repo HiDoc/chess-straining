@@ -8,37 +8,25 @@
       <div class="control-section">
         <h4>Session</h4>
         <div class="control-buttons">
-          <button @click="$emit('newSession')" class="control-btn primary">
-            🔄 New Session
-          </button>
-          <button 
-            @click="$emit('switchColor')" 
-            class="control-btn secondary"
-          >
-            🔀 Switch to {{ oppositeColor }}
-          </button>
+          <button @click="$emit('newSession')" class="control-btn primary">🔄 New Session</button>
         </div>
       </div>
 
       <div class="control-section">
         <h4>Move Control</h4>
         <div class="control-buttons">
-          <button 
-            @click="$emit('rollback')" 
-            :disabled="!canRollback"
-            class="control-btn danger"
-          >
+          <button @click="$emit('rollback')" :disabled="!canRollback" class="control-btn danger">
             ↶ Undo Move
           </button>
-          <button 
-            @click="$emit('cancelOpponentMove')" 
+          <button
+            @click="$emit('cancelOpponentMove')"
             :disabled="!canCancelOpponent"
             class="control-btn warning"
           >
             🚫 Cancel Opponent Move
           </button>
-          <button 
-            @click="$emit('toggleEditMode')" 
+          <button
+            @click="$emit('toggleEditMode')"
             class="control-btn"
             :class="isEditMode ? 'active' : 'secondary'"
           >
@@ -51,11 +39,7 @@
         <h4>Theme</h4>
         <div class="theme-switcher">
           <label class="theme-toggle">
-            <input 
-              type="checkbox" 
-              v-model="isDarkMode" 
-              @change="toggleTheme"
-            />
+            <input type="checkbox" v-model="isDarkMode" @change="toggleTheme" />
             <span class="slider">
               <span class="slider-icon">{{ isDarkMode ? '🌙' : '☀️' }}</span>
             </span>
@@ -81,7 +65,7 @@
           </div>
           <div class="stat-item" v-if="isLineCompleted">
             <span class="stat-label">Status:</span>
-            <span class="stat-value line-completed">✅ Line Completed!</span>
+            <span class="stat-value line-completed">✅&nbsp;Line&nbsp;Completed</span>
           </div>
         </div>
       </div>
@@ -90,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 
 interface Props {
   canRollback: boolean
@@ -102,7 +86,7 @@ interface Props {
   isEditMode: boolean
 }
 
-const props = defineProps<Props>()
+defineProps<Props>()
 
 defineEmits<{
   newSession: []
@@ -112,11 +96,7 @@ defineEmits<{
   toggleEditMode: []
 }>()
 
-const isDarkMode = ref(false)
-
-const oppositeColor = computed(() => 
-  props.currentColor === 'white' ? 'Black' : 'White'
-)
+const isDarkMode = ref(true)
 
 function toggleTheme() {
   document.documentElement.classList.toggle('dark-mode', isDarkMode.value)
@@ -341,9 +321,15 @@ if (savedTheme === 'true') {
 }
 
 @keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 /* Dark mode styles */

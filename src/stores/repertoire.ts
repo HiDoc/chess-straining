@@ -1,8 +1,10 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
+import { Chess } from 'chess.js'
 
 export interface RepertoireMove {
-  [move: string]: RepertoireMove
+  [move: string]: RepertoireMove | string | undefined
+  name?: string
 }
 
 export interface RepertoireData {
@@ -16,6 +18,44 @@ export const useRepertoireStore = defineStore('repertoire', () => {
   const currentLine = ref<string[]>([])
   const gameHistory = ref<string[]>([])
   const lineNames = ref<{ [key: string]: string }>({})
+  const fenMap = ref<Record<string, { path: string[], color: 'white' | 'black' }>>({})
+
+  function normalizeFen(fen: string): string {
+    return fen.split(' ').slice(0, 4).join(' ')
+  }
+
+  function updateFenMap() {
+    const map: Record<string, { path: string[], color: 'white' | 'black' }> = {}
+
+    function traverse(moves: RepertoireMove, path: string[], game: Chess, color: 'white' | 'black') {
+      const fen = normalizeFen(game.fen())
+
+      // Only store if not root and not already stored (or maybe overwrite if shorter?)
+      // We skip root position
+      if (path.length > 0 && !map[fen]) {
+        map[fen] = { path: [...path], color }
+      }
+
+      for (const move in moves) {
+        if (move === 'name') continue
+
+        try {
+          const moveResult = game.move(move)
+          if (moveResult) {
+            traverse(moves[move] as RepertoireMove, [...path, move], game, color)
+            game.undo()
+          }
+        } catch (e) {
+          // Ignore invalid moves in traversal
+        }
+      }
+    }
+
+    traverse(repertoire.value.white, [], new Chess(), 'white')
+    traverse(repertoire.value.black, [], new Chess(), 'black')
+
+    fenMap.value = map
+  }
 
   // Load repertoire from JSON file
   async function loadRepertoire() {
@@ -23,6 +63,7 @@ export const useRepertoireStore = defineStore('repertoire', () => {
       const response = await fetch('/repertoire.json')
       const data = await response.json()
       repertoire.value = data
+      updateFenMap()
     } catch (error) {
       console.error('Failed to load repertoire:', error)
     }
@@ -110,18 +151,64 @@ export const useRepertoireStore = defineStore('repertoire', () => {
       current[newMove] = {}
     }
     saveRepertoire()
+    updateFenMap()
   }
 
   // Name a line
   function nameLine(path: string[], name: string, color: 'white' | 'black') {
-    const key = `${color}:${path.join(',')}`
-    lineNames.value[key] = name
+    let current = repertoire.value[color]
+    for (const move of path) {
+      if (current[move]) {
+        current = current[move] as RepertoireMove
+      }
+    }
+    current.name = name
+    saveRepertoire()
   }
 
   // Get line name
   function getLineName(path: string[], color: 'white' | 'black'): string | undefined {
-    const key = `${color}:${path.join(',')}`
-    return lineNames.value[key]
+    let current = repertoire.value[color]
+    for (const move of path) {
+      if (current[move]) {
+        current = current[move] as RepertoireMove
+      } else {
+        return undefined
+      }
+    }
+    return current.name
+  }
+
+  function findTransposition(fen: string): { path: string[], color: 'white' | 'black' } | null {
+    const normalized = normalizeFen(fen)
+    const found = fenMap.value[normalized]
+
+    if (found) {
+      // Only allow transposition within the same color repertoire
+      if (found.color !== currentColor.value) {
+        return null
+      }
+
+      // Don't return if it's the exact same path we are currently on
+      // We need to check if the found path is different from currentLine
+      // But currentLine might be a prefix or different.
+      // If the found path is the same as currentLine, it's not a transposition, it's where we are.
+
+      // Simple check: if paths are identical in length and content
+      if (found.color === currentColor.value &&
+        found.path.length === currentLine.value.length &&
+        found.path.every((m, i) => m === currentLine.value[i])) {
+        return null
+      }
+
+      // Also, if we are just extending the current line, we don't want to jump to ourselves.
+      // But findTransposition is called after a move.
+      // If I play a move and reach a position that is ALREADY in the map (from another branch),
+      // then it is a transposition.
+
+      return found
+    }
+    return null
   }
 
   return {
@@ -141,6 +228,7 @@ export const useRepertoireStore = defineStore('repertoire', () => {
     navigateToPosition,
     addMoveToRepertoire,
     nameLine,
-    getLineName
+    getLineName,
+    findTransposition
   }
 })

@@ -1,6 +1,7 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import fs from 'node:fs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -42,6 +43,20 @@ function createWindow() {
     win.loadFile(path.join(process.env.DIST, 'index.html'))
   }
 }
+
+ipcMain.handle('save-repertoire', async (event, { data, fileName }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog({
+    title: 'Save Repertoire',
+    defaultPath: fileName || `chess-repertoire-${new Date().toISOString().split('T')[0]}.json`,
+    filters: [{ name: 'JSON Files', extensions: ['json'] }]
+  })
+
+  if (!canceled && filePath) {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
+    return true
+  }
+  return false
+})
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

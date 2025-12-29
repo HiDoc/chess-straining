@@ -3,12 +3,14 @@
     <div
       class="node-content"
       :class="{ highlighted: isHighlighted }"
-      :style="{ paddingLeft: `${depth * 20}px` }"
+      :style="{ paddingLeft: `${depth * 10}px` }"
       @click="navigateToPosition"
     >
       <div class="node-info">
         <span class="move-pair">
-          <span class="move-number">{{ Math.floor(depth / 2) + 1 }}{{ depth % 2 === 1 ? '...' : '.' }}</span>
+          <span class="move-number"
+            >{{ Math.floor(depth / 2) + 1 }}{{ depth % 2 === 1 ? '...' : '.' }}</span
+          >
           <span
             class="move-text"
             :class="{ 'white-move': depth % 2 === 0, 'black-move': depth % 2 === 1 }"
@@ -16,7 +18,7 @@
             {{ move }}
           </span>
         </span>
-        <span class="depth-indicator">({{ Math.floor(depth / 2) + 1 }})</span>
+        <span v-if="children.name" class="inline-name"> {{ children.name }}</span>
       </div>
 
       <div class="node-actions">
@@ -27,16 +29,8 @@
         >
           +
         </button>
-        <button @click="$emit('editMove', path)" class="action-icon edit-icon" title="Edit move">
+        <button @click="showNameDialog" class="action-icon name-icon" title="Name this line">
           ✏️
-        </button>
-        <button
-          @click="showNameDialog"
-          class="action-icon name-icon"
-          title="Name this line"
-          v-if="!hasChildren"
-        >
-          🏷️
         </button>
         <button
           @click="$emit('deleteMove', path)"
@@ -51,27 +45,28 @@
           v-if="hasChildren"
           :title="isExpanded ? 'Collapse' : 'Expand'"
         >
-          {{ isExpanded ? '−' : '+' }}
+          {{ isExpanded ? '▼' : '▶' }}
         </button>
       </div>
     </div>
 
     <div v-if="isExpanded && hasChildren" class="children">
-      <RepertoireTreeNode
-        v-for="(childMoves, childMove) in children"
-        :key="childMove"
-        :move="String(childMove)"
-        :children="childMoves"
-        :depth="depth + 1"
-        :path="[...path, String(childMove)]"
-        :current-line="currentLine"
-        :is-highlighted="isChildHighlighted(String(childMove))"
-        @edit-move="$emit('editMove', $event)"
-        @delete-move="$emit('deleteMove', $event)"
-        @add-response="$emit('addResponse', $event)"
-        @navigate-to-position="$emit('navigateToPosition', $event)"
-        @name-line="(path, name) => $emit('nameLine', path, name)"
-      />
+      <template v-for="(childMoves, childMove) in children" :key="childMove">
+        <RepertoireTreeNode
+          v-if="childMove !== 'name'"
+          :move="String(childMove)"
+          :children="childMoves"
+          :depth="depth + 1"
+          :path="[...path, String(childMove)]"
+          :current-line="currentLine"
+          :is-highlighted="isChildHighlighted(String(childMove))"
+          @edit-move="$emit('editMove', $event)"
+          @delete-move="$emit('deleteMove', $event)"
+          @add-response="$emit('addResponse', $event)"
+          @navigate-to-position="$emit('navigateToPosition', $event)"
+          @name-line="(path, name) => $emit('nameLine', path, name)"
+        />
+      </template>
     </div>
 
     <div v-if="isExpanded && !hasChildren" class="end-line">
@@ -84,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { RepertoireMove } from '../stores/repertoire'
 
 interface Props {
@@ -107,9 +102,30 @@ const emit = defineEmits<{
   nameLine: [path: string[], name: string]
 }>()
 
-const isExpanded = ref(true)
+const isExpanded = ref(false)
 
-const hasChildren = computed(() => Object.keys(props.children).length > 0)
+const hasChildren = computed(() => {
+  const keys = Object.keys(props.children)
+  // Filter out 'name' key when checking for children
+  return keys.filter((k) => k !== 'name').length > 0
+})
+
+watch(
+  () => props.currentLine,
+  (newLine) => {
+    if (!newLine) return
+
+    // If the current line includes this node's path, expand it
+    // Only expand if the current line goes deeper than this node
+    if (newLine.length > props.path.length) {
+      const isPathInLine = props.path.every((move, index) => move === newLine[index])
+      if (isPathInLine) {
+        isExpanded.value = true
+      }
+    }
+  },
+  { immediate: true, deep: true },
+)
 
 function isChildHighlighted(childMove: string): boolean {
   if (!props.currentLine) return false
@@ -135,7 +151,8 @@ function navigateToPosition(event: Event) {
 
 function showNameDialog(event: Event) {
   event.stopPropagation()
-  const name = prompt('Enter a name for this line:', props.lineName || '')
+  const currentName = props.children.name || ''
+  const name = prompt('Enter a name for this line:', currentName)
   if (name !== null) {
     emit('nameLine', props.path, name)
   }
@@ -190,6 +207,10 @@ function showNameDialog(event: Event) {
   color: #666;
   font-weight: normal;
   min-width: 20px;
+}
+
+.dark-mode .move-number {
+  color: #a0aec0 !important;
 }
 
 .move-text {
@@ -281,7 +302,7 @@ function showNameDialog(event: Event) {
 
 .children {
   border-left: 2px solid #dee2e6;
-  margin-left: 10px;
+  margin-left: 0px;
 }
 
 .end-line {
@@ -300,5 +321,14 @@ function showNameDialog(event: Event) {
   font-weight: bold;
   font-style: normal;
   margin-left: 8px;
+}
+
+.inline-name {
+  font-weight: normal;
+  font-style: italic;
+  opacity: 0.9;
+}
+.dark-mode .inline-name:hover {
+  color: black;
 }
 </style>

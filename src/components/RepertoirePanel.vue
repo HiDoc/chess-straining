@@ -3,58 +3,55 @@
     <div class="panel-header">
       <h3>Repertoire Management</h3>
       <div class="color-selector">
-        <label>
+        <div class="segmented-control">
           <input
             type="radio"
+            id="color-white"
             value="white"
             v-model="selectedColor"
             @change="switchToColor('white')"
           />
-          White
-        </label>
-        <label>
+          <label for="color-white" class="segment-label"> <span class="icon">♔</span> White </label>
+
           <input
             type="radio"
+            id="color-black"
             value="black"
             v-model="selectedColor"
             @change="switchToColor('black')"
           />
-          Black
-        </label>
+          <label for="color-black" class="segment-label"> <span class="icon">♚</span> Black </label>
+        </div>
       </div>
     </div>
 
     <div class="panel-content">
       <div class="repertoire-actions">
-        <button @click="addNewLine" class="action-btn add-btn">+ Add New Line</button>
-        <button @click="exportRepertoire" class="action-btn export-btn">Export JSON</button>
         <label class="action-btn import-btn">
           Import JSON
           <input type="file" @change="importRepertoire" accept=".json" style="display: none" />
         </label>
+        <button @click="exportRepertoire" class="action-btn export-btn">Export JSON</button>
       </div>
 
       <div class="repertoire-tree">
-        <div class="tree-header" @click="toggleTreeExpanded">
-          <h4>{{ selectedColor === 'white' ? 'White' : 'Black' }} Repertoire</h4>
-          <button class="collapse-btn">{{ isTreeExpanded ? '▼' : '▶' }}</button>
-        </div>
-        <div v-show="isTreeExpanded" class="tree-container">
-          <RepertoireTreeNode
-            v-for="(moves, move) in currentRepertoire"
-            :key="move"
-            :move="String(move)"
-            :children="moves"
-            :depth="0"
-            :path="[String(move)]"
-            :current-line="repertoireStore.currentLine"
-            :is-highlighted="isRootHighlighted(String(move))"
-            @edit-move="editMove"
-            @delete-move="deleteMove"
-            @add-response="addResponse"
-            @navigate-to-position="navigateToPosition"
-            @name-line="handleNameLine"
-          />
+        <div class="tree-container">
+          <template v-for="(moves, move) in currentRepertoire" :key="move">
+            <RepertoireTreeNode
+              v-if="move !== 'name'"
+              :move="String(move)"
+              :children="moves"
+              :depth="0"
+              :path="[String(move)]"
+              :current-line="repertoireStore.currentLine"
+              :is-highlighted="isRootHighlighted(String(move))"
+              @edit-move="editMove"
+              @delete-move="deleteMove"
+              @add-response="addResponse"
+              @navigate-to-position="navigateToPosition"
+              @name-line="handleNameLine"
+            />
+          </template>
         </div>
       </div>
 
@@ -72,6 +69,25 @@
             <div class="modal-actions">
               <button @click="saveMove" class="save-btn">Save</button>
               <button @click="cancelEdit" class="cancel-btn">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="isExporting" class="edit-modal">
+        <div class="modal-content">
+          <h4>Export Repertoire</h4>
+          <div class="edit-form">
+            <label>File Name:</label>
+            <input
+              v-model="exportFileName"
+              type="text"
+              placeholder="Enter file name"
+              @keyup.enter="confirmExport"
+            />
+            <div class="modal-actions">
+              <button @click="confirmExport" class="save-btn">Export</button>
+              <button @click="cancelExport" class="cancel-btn">Cancel</button>
             </div>
           </div>
         </div>
@@ -97,18 +113,27 @@ const selectedColor = ref<'white' | 'black'>('white')
 const isEditing = ref(false)
 const newMove = ref('')
 const editingPath = ref<string[]>([])
-const isTreeExpanded = ref(true)
+const isExporting = ref(false)
+const exportFileName = ref('')
 
 const currentRepertoire = computed(() => repertoireStore.repertoire[selectedColor.value])
 
 const totalLines = computed(() => {
   function countLines(moves: RepertoireMove): number {
     let count = 0
-    for (const [, children] of Object.entries(moves)) {
-      if (Object.keys(children as RepertoireMove).length === 0) {
-        count += 1
-      } else {
-        count += countLines(children as RepertoireMove)
+    for (const [key, children] of Object.entries(moves)) {
+      if (key === 'name') continue
+
+      // Check if children is an object and not a string (just in case)
+      if (typeof children === 'object' && children !== null) {
+        // Filter out 'name' from keys check
+        const childKeys = Object.keys(children).filter((k) => k !== 'name')
+
+        if (childKeys.length === 0) {
+          count += 1
+        } else {
+          count += countLines(children as RepertoireMove)
+        }
       }
     }
     return count
@@ -119,9 +144,18 @@ const totalLines = computed(() => {
 const maxDepth = computed(() => {
   function getDepth(moves: RepertoireMove, depth = 0): number {
     let maxD = depth
-    for (const [, children] of Object.entries(moves)) {
-      if (Object.keys(children as RepertoireMove).length > 0) {
-        maxD = Math.max(maxD, getDepth(children as RepertoireMove, depth + 1))
+    for (const [key, children] of Object.entries(moves)) {
+      if (key === 'name') continue
+
+      if (typeof children === 'object' && children !== null) {
+        const childKeys = Object.keys(children).filter((k) => k !== 'name')
+
+        if (childKeys.length > 0) {
+          maxD = Math.max(maxD, getDepth(children as RepertoireMove, depth + 1))
+        } else {
+          // If it's a leaf node (only has name or empty), depth is current depth + 1
+          maxD = Math.max(maxD, depth + 1)
+        }
       }
     }
     return maxD
@@ -144,10 +178,6 @@ function isRootHighlighted(move: string): boolean {
   return repertoireStore.currentLine.length > 0 && repertoireStore.currentLine[0] === move
 }
 
-function toggleTreeExpanded() {
-  isTreeExpanded.value = !isTreeExpanded.value
-}
-
 function navigateToPosition(path: string[]) {
   // Navigate to this position in the store
   repertoireStore.navigateToPosition(path, selectedColor.value)
@@ -155,12 +185,6 @@ function navigateToPosition(path: string[]) {
 
 function handleNameLine(path: string[], name: string) {
   repertoireStore.nameLine(path, name, selectedColor.value)
-}
-
-function addNewLine() {
-  editingPath.value = []
-  newMove.value = ''
-  isEditing.value = true
 }
 
 function addResponse(path: string[]) {
@@ -231,14 +255,75 @@ function cancelEdit() {
 }
 
 function exportRepertoire() {
+  exportFileName.value = `chess-repertoire-${new Date().toISOString().split('T')[0]}`
+  isExporting.value = true
+}
+
+function cancelExport() {
+  isExporting.value = false
+  exportFileName.value = ''
+}
+
+function confirmExport() {
+  const fileName = exportFileName.value.endsWith('.json')
+    ? exportFileName.value
+    : `${exportFileName.value}.json`
+
+  // Check if running in Electron
+  if (typeof window !== 'undefined' && window?.process?.versions?.electron) {
+    const { ipcRenderer } = window.require('electron')
+    ipcRenderer.invoke('save-repertoire', {
+      data: repertoireStore.repertoire,
+      fileName: fileName,
+    })
+    isExporting.value = false
+    return
+  }
+
   const dataStr = JSON.stringify(repertoireStore.repertoire, null, 2)
+
+  // Try using the File System Access API (Chrome/Edge/Opera)
+  if ('showSaveFilePicker' in window) {
+    try {
+      // @ts-ignore Experimental API
+      window
+        .showSaveFilePicker({
+          suggestedName: fileName,
+          types: [
+            {
+              description: 'JSON File',
+              accept: { 'application/json': ['.json'] },
+            },
+          ],
+        })
+        .then(async (fileHandle: any) => {
+          const writable = await fileHandle.createWritable()
+          await writable.write(dataStr)
+          await writable.close()
+        })
+        .catch((err: any) => {
+          if (err.name !== 'AbortError') {
+            console.error('File Save Error:', err)
+            // Fallback if something goes wrong (but not if user cancelled)
+            downloadFallback(dataStr, fileName)
+          }
+        })
+      isExporting.value = false
+      return
+    } catch (e) {
+      // Fallback if API fails
+    }
+  }
+
+  downloadFallback(dataStr, fileName)
+  isExporting.value = false
+}
+
+function downloadFallback(dataStr: string, fileName: string) {
   const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr)
-
-  const exportFileDefaultName = `chess-repertoire-${new Date().toISOString().split('T')[0]}.json`
-
   const linkElement = document.createElement('a')
   linkElement.setAttribute('href', dataUri)
-  linkElement.setAttribute('download', exportFileDefaultName)
+  linkElement.setAttribute('download', fileName)
   linkElement.click()
 }
 
@@ -296,14 +381,51 @@ function importRepertoire(event: Event) {
 
 .color-selector {
   display: flex;
-  gap: 15px;
+  justify-content: center;
+  margin-top: 10px;
 }
 
-.color-selector label {
+.segmented-control {
+  display: flex;
+  background: #e9ecef;
+  border-radius: 8px;
+  padding: 4px;
+  width: 100%;
+}
+
+.segmented-control input[type='radio'] {
+  display: none;
+}
+
+.segment-label {
+  flex: 1;
+  text-align: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-weight: 500;
+  color: black;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 5px;
-  cursor: pointer;
+  justify-content: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.segment-label:hover {
+  color: #212529;
+}
+
+.segmented-control input[type='radio']:checked + .segment-label {
+  background: white;
+  color: #007bff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.icon {
+  font-size: 1.2em;
+  line-height: 1;
 }
 
 .panel-content {
@@ -315,7 +437,8 @@ function importRepertoire(event: Event) {
 
 .repertoire-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  justify-content: space-between;
   gap: 10px;
   margin-bottom: 20px;
 }
@@ -393,7 +516,6 @@ function importRepertoire(event: Event) {
 }
 
 .tree-container {
-  max-height: 400px;
   overflow-y: auto;
   border: 1px solid #dee2e6;
   border-radius: 4px;

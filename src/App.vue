@@ -135,11 +135,6 @@ body,
   color: #f7fafc !important;
 }
 
-/* Dark mode for color selector */
-.dark-mode .color-selector label {
-  color: #cbd5e0 !important;
-}
-
 /* Dark mode for repertoire actions */
 .dark-mode .add-btn {
   background: #38a169 !important;

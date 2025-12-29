@@ -6,12 +6,12 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 import electron from 'vite-plugin-electron/simple'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [
     vue(),
     vueDevTools(),
-    electron({
+    mode !== 'web' && electron({
       main: {
         entry: 'electron/main.ts',
       },
@@ -25,4 +25,4 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
-})
+}))

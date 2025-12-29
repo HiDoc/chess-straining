@@ -1,16 +1,8 @@
 <template>
   <Teleport to="body">
     <div class="toast-container">
-      <Transition
-        v-for="toast in toasts"
-        :key="toast.id"
-        name="toast"
-        appear
-      >
-        <div 
-          :class="['toast', `toast-${toast.type}`]"
-          @click="removeToast(toast.id)"
-        >
+      <Transition v-for="toast in toasts" :key="toast.id" name="toast" appear>
+        <div :class="['toast', `toast-${toast.type}`]" @click="removeToast(toast.id)">
           <div class="toast-content">
             <div class="toast-icon">
               <span v-if="toast.type === 'success'">✅</span>
@@ -39,16 +31,16 @@ export interface Toast {
 const toasts = ref<Toast[]>([])
 let toastId = 0
 
-function addToast(message: string, type: 'success' | 'error' | 'info', duration = 3000) {
+function addToast(message: string, type: 'success' | 'error' | 'info', duration = 5000) {
   const toast: Toast = {
     id: ++toastId,
     message,
     type,
-    duration
+    duration,
   }
-  
+
   toasts.value.push(toast)
-  
+
   // Auto-remove toast after duration
   setTimeout(() => {
     removeToast(toast.id)
@@ -56,7 +48,7 @@ function addToast(message: string, type: 'success' | 'error' | 'info', duration 
 }
 
 function removeToast(id: number) {
-  const index = toasts.value.findIndex(toast => toast.id === id)
+  const index = toasts.value.findIndex((toast) => toast.id === id)
   if (index > -1) {
     toasts.value.splice(index, 1)
   }
@@ -64,7 +56,7 @@ function removeToast(id: number) {
 
 // Expose the addToast function for external use
 defineExpose({
-  addToast
+  addToast,
 })
 </script>
 
@@ -92,7 +84,9 @@ defineExpose({
   max-width: 400px;
   pointer-events: auto;
   cursor: pointer;
-  transition: transform 0.2s, opacity 0.2s;
+  transition:
+    transform 0.2s,
+    opacity 0.2s;
 }
 
 .toast:hover {
@@ -177,15 +171,15 @@ defineExpose({
     background: #2d3748;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   }
-  
+
   .toast-message {
     color: #e2e8f0;
   }
-  
+
   .toast-close {
     color: #a0aec0;
   }
-  
+
   .toast-close:hover {
     background-color: #4a5568;
   }

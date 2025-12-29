@@ -67,7 +67,6 @@ function showToast(message: string, type: 'success' | 'error' | 'info') {
   <div class="app-layout">
     <RepertoirePanel class="left-panel" />
     <main class="main-content">
-      <h1>Chess Opening Training</h1>
       <ChessBoard ref="chessBoardRef" @show-toast="showToast" />
     </main>
     <ControlsPanel
@@ -76,6 +75,7 @@ function showToast(message: string, type: 'success' | 'error' | 'info') {
       :can-cancel-opponent="canCancelOpponent"
       :current-color="currentColor"
       :move-count="moveCount"
+      :orientation="orientation"
       :current-line-display="currentLineDisplay"
       :is-line-completed="isLineCompleted"
       :is-edit-mode="isEditMode"
@@ -94,6 +94,7 @@ function showToast(message: string, type: 'success' | 'error' | 'info') {
   display: flex;
   flex-direction: row;
   height: 100vh;
+  width: 100vw;
 }
 
 .left-panel {
