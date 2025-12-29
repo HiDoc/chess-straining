@@ -55,7 +55,7 @@
         <RepertoireTreeNode
           v-if="childMove !== 'name'"
           :move="String(childMove)"
-          :children="childMoves"
+          :children="childMoves as RepertoireMove"
           :depth="depth + 1"
           :path="[...path, String(childMove)]"
           :current-line="currentLine"

@@ -75,7 +75,6 @@ function showToast(message: string, type: 'success' | 'error' | 'info') {
       :can-cancel-opponent="canCancelOpponent"
       :current-color="currentColor"
       :move-count="moveCount"
-      :orientation="orientation"
       :current-line-display="currentLineDisplay"
       :is-line-completed="isLineCompleted"
       :is-edit-mode="isEditMode"

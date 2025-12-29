@@ -40,7 +40,7 @@
             <RepertoireTreeNode
               v-if="move !== 'name'"
               :move="String(move)"
-              :children="moves"
+              :children="moves as RepertoireMove"
               :depth="0"
               :path="[String(move)]"
               :current-line="repertoireStore.currentLine"
@@ -210,7 +210,7 @@ function deleteMove(path: string[]) {
 
     // Navigate to parent
     for (let i = 0; i < path.length - 1; i++) {
-      current = current[path[i]]
+      current = current[path[i]] as RepertoireMove
     }
 
     // Delete the move
@@ -236,7 +236,7 @@ function saveMove() {
     if (!current[pathMove]) {
       current[pathMove] = {}
     }
-    current = current[pathMove]
+    current = current[pathMove] as RepertoireMove
   }
 
   // Add the new move
@@ -270,8 +270,10 @@ function confirmExport() {
     : `${exportFileName.value}.json`
 
   // Check if running in Electron
-  if (typeof window !== 'undefined' && window?.process?.versions?.electron) {
-    const { ipcRenderer } = window.require('electron')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const win = window as any
+  if (typeof window !== 'undefined' && win?.process?.versions?.electron) {
+    const { ipcRenderer } = win.require('electron')
     ipcRenderer.invoke('save-repertoire', {
       data: repertoireStore.repertoire,
       fileName: fileName,
@@ -285,7 +287,7 @@ function confirmExport() {
   // Try using the File System Access API (Chrome/Edge/Opera)
   if ('showSaveFilePicker' in window) {
     try {
-      // @ts-ignore Experimental API
+      // @ts-expect-error Experimental API
       window
         .showSaveFilePicker({
           suggestedName: fileName,
@@ -296,12 +298,12 @@ function confirmExport() {
             },
           ],
         })
-        .then(async (fileHandle: any) => {
+        .then(async (fileHandle: FileSystemFileHandle) => {
           const writable = await fileHandle.createWritable()
           await writable.write(dataStr)
           await writable.close()
         })
-        .catch((err: any) => {
+        .catch((err: DOMException) => {
           if (err.name !== 'AbortError') {
             console.error('File Save Error:', err)
             // Fallback if something goes wrong (but not if user cancelled)
@@ -311,7 +313,8 @@ function confirmExport() {
       isExporting.value = false
       return
     } catch (e) {
-      // Fallback if API fails
+      // Fallback to download
+      console.error('File System Access API Error:', e)
     }
   }
 

@@ -85,7 +85,7 @@ export const useRepertoireStore = defineStore('repertoire', () => {
     let current = repertoire.value[currentColor.value]
     for (const move of currentLine.value) {
       if (current[move]) {
-        current = current[move]
+        current = current[move] as RepertoireMove
       } else {
         return {}
       }
@@ -145,7 +145,7 @@ export const useRepertoireStore = defineStore('repertoire', () => {
       if (!current[move]) {
         current[move] = {}
       }
-      current = current[move]
+      current = current[move] as RepertoireMove
     }
     if (!current[newMove]) {
       current[newMove] = {}
