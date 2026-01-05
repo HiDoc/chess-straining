@@ -1,10 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
-import path from 'node:path'
+import nodePath from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-
+const __dirname = nodePath.dirname(fileURLToPath(import.meta.url))
 // The built directory structure
 //
 // ├─┬─ dist
@@ -16,20 +15,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // └── electron
 //    └── main.ts
 
-process.env.DIST = path.join(__dirname, '../dist')
-process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, '../public')
+process.env.DIST = nodePath.join(__dirname, '../dist');
+process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : nodePath.join(process.env.DIST, '../public')
 const path = process.env.VITE_PUBLIC as string;
 let win: BrowserWindow | null
 
 function createWindow() {
   win = new BrowserWindow({
-    icon: path.join(path || './public', 'electron-vite.svg'),
+    icon: nodePath.join(path || './public', 'electron-vite.svg'),
+    fullscreen: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: nodePath.join(__dirname, 'preload.js'),
       nodeIntegration: true,
       contextIsolation: false, // For simplicity in this standalone app, but consider true for security
     },
-  })
+  });
 
   // Test active push message to Renderer-process.
   win.webContents.on('did-finish-load', () => {
@@ -40,7 +40,7 @@ function createWindow() {
     win.loadURL(process.env.VITE_DEV_SERVER_URL)
   } else {
     // win.loadFile('dist/index.html')
-    win.loadFile(path.join(process.env.DIST, 'index.html'))
+    win.loadFile(nodePath.join(process.env.DIST as string, 'index.html'))
   }
 }
 

@@ -26,6 +26,13 @@
             🚫 Cancel Opponent Move
           </button>
           <button
+            v-if="canRequestNewWhiteMove"
+            @click="$emit('requestNewWhiteMove')"
+            class="control-btn primary"
+          >
+            ⚡ New White Opening
+          </button>
+          <button
             @click="$emit('toggleEditMode')"
             class="control-btn"
             :class="isEditMode ? 'active' : 'secondary'"
@@ -84,6 +91,7 @@ interface Props {
   currentLineDisplay: string
   isLineCompleted: boolean
   isEditMode: boolean
+  canRequestNewWhiteMove: boolean
 }
 
 defineProps<Props>()
@@ -94,6 +102,7 @@ defineEmits<{
   rollback: []
   cancelOpponentMove: []
   toggleEditMode: []
+  requestNewWhiteMove: []
 }>()
 
 const isDarkMode = ref(true)

@@ -19,6 +19,11 @@ export const useRepertoireStore = defineStore('repertoire', () => {
   const gameHistory = ref<string[]>([])
   const lineNames = ref<{ [key: string]: string }>({})
   const fenMap = ref<Record<string, { path: string[], color: 'white' | 'black' }>>({})
+  const sessionId = ref(0)
+
+  function incrementSession() {
+    sessionId.value++
+  }
 
   function normalizeFen(fen: string): string {
     return fen.split(' ').slice(0, 4).join(' ')
@@ -129,6 +134,7 @@ export const useRepertoireStore = defineStore('repertoire', () => {
     currentColor.value = color
     currentLine.value = []
     gameHistory.value = []
+    incrementSession()
   }
 
   // Navigate to specific position in repertoire
@@ -136,6 +142,7 @@ export const useRepertoireStore = defineStore('repertoire', () => {
     currentColor.value = color
     currentLine.value = [...path]
     gameHistory.value = [...path]
+    incrementSession()
   }
 
   // Add new move to repertoire
@@ -218,6 +225,7 @@ export const useRepertoireStore = defineStore('repertoire', () => {
     gameHistory,
     currentRepertoire,
     lineNames,
+    sessionId,
     loadRepertoire,
     saveRepertoire,
     getRandomOpponentMove,
@@ -229,6 +237,7 @@ export const useRepertoireStore = defineStore('repertoire', () => {
     addMoveToRepertoire,
     nameLine,
     getLineName,
-    findTransposition
+    findTransposition,
+    incrementSession
   }
 })

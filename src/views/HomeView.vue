@@ -12,11 +12,21 @@ const toastRef = ref()
 
 const canRollback = computed(() => chessBoardRef.value?.canRollback ?? false)
 const canCancelOpponent = computed(() => chessBoardRef.value?.canCancelOpponent ?? false)
+const canRequestNewWhiteMove = computed(() => chessBoardRef.value?.canRequestNewWhiteMove ?? false)
 const currentColor = computed(() => repertoireStore.currentColor)
 const moveCount = computed(() => repertoireStore.currentLine.length)
+
+function* chunks<T>(arr: T[], n: number): Generator<T[]> {
+  for (let i = 0; i < arr.length; i += n) {
+    yield arr.slice(i, i + n)
+  }
+}
+
 const currentLineDisplay = computed(() =>
   repertoireStore.currentLine.length > 0
-    ? repertoireStore.currentLine.join(' → ')
+    ? Array.from(chunks(repertoireStore.currentLine, 2))
+        .map((chunk, index) => `${index + 1}. ${chunk.join(' ')}`)
+        .join('\n')
     : 'Start position',
 )
 const isLineCompleted = computed(
@@ -56,6 +66,12 @@ function handleToggleEditMode() {
   }
 }
 
+function handleRequestNewWhiteMove() {
+  if (chessBoardRef.value) {
+    chessBoardRef.value.requestNewWhiteMove()
+  }
+}
+
 function showToast(message: string, type: 'success' | 'error' | 'info') {
   if (toastRef.value) {
     toastRef.value.addToast(message, type)
@@ -73,6 +89,7 @@ function showToast(message: string, type: 'success' | 'error' | 'info') {
       class="right-panel"
       :can-rollback="canRollback"
       :can-cancel-opponent="canCancelOpponent"
+      :can-request-new-white-move="canRequestNewWhiteMove"
       :current-color="currentColor"
       :move-count="moveCount"
       :current-line-display="currentLineDisplay"
@@ -82,6 +99,7 @@ function showToast(message: string, type: 'success' | 'error' | 'info') {
       @switch-color="handleSwitchColor"
       @rollback="handleRollback"
       @cancel-opponent-move="handleCancelOpponentMove"
+      @request-new-white-move="handleRequestNewWhiteMove"
       @toggle-edit-mode="handleToggleEditMode"
     />
     <ToastNotification ref="toastRef" />

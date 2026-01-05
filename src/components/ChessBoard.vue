@@ -1,8 +1,8 @@
 <template>
   <div class="chess-board-container">
     <TheChessboard
-      :board-config="boardConfig"
-      @board-created="(api) => (boardApi = api)"
+      :board-config="boardConfig.config"
+      @board-created="(api) => (boardConfig.boardApi.value = api)"
       @move="handleMove"
     />
     <LineCompletePopup ref="lineCompletePopup" />
@@ -11,321 +11,207 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive, watch } from 'vue'
-import { Chess } from 'chess.js'
-import { BoardApi, TheChessboard } from 'vue3-chessboard'
+import { ref, onMounted, computed, watch } from 'vue'
+import { TheChessboard } from 'vue3-chessboard'
 import 'vue3-chessboard/style.css'
 import { useRepertoireStore } from '../stores/repertoire'
+import { useChessGame } from '../composables/useChessGame'
+import { useTrainingSession } from '../composables/useTrainingSession'
+import { useOpponentEngine } from '../composables/useOpponentEngine'
+import { useBoardConfig } from '../composables/useBoardConfig'
 import LineCompletePopup from './LineCompletePopup.vue'
 import TranspositionPopup from './TranspositionPopup.vue'
-
-const repertoireStore = useRepertoireStore()
-const game = ref(new Chess())
-const lineCompletePopup = ref<{ show: () => void } | null>(null)
-const transpositionPopup = ref<{
-  show: (path: string[], onConfirm: () => void, onCancel: () => void) => void
-} | null>(null)
-const boardApi = ref<
-  | ({
-      setPosition: (fen: string) => void
-    } & BoardApi)
-  | null
->(null)
-const isEditMode = ref(false)
-const lastOpponentMove = ref<string | null>(null)
-
-const color = computed(() => repertoireStore.currentColor)
 
 const emit = defineEmits<{
   showToast: [message: string, type: 'success' | 'error' | 'info']
 }>()
 
-const boardConfig = reactive({
-  orientation: 'white' as 'white' | 'black',
-  coordinates: true,
-  autoCastle: true,
-  viewOnly: false,
-  disableContextMenu: false,
-  addPieceZIndex: false,
-  blockTouchScroll: false,
-  highlight: {
-    lastMove: true,
-    check: true,
+// Initialize store and composables
+const repertoireStore = useRepertoireStore()
+const chessGame = useChessGame()
+const trainingSession = useTrainingSession(chessGame, repertoireStore)
+const boardConfig = useBoardConfig(chessGame, trainingSession.currentColor)
+const opponentEngine = useOpponentEngine(
+  chessGame,
+  repertoireStore,
+  (move) => {
+    emit('showToast', `Opponent played: ${move}`, 'info')
+    boardConfig.updatePosition()
+    handleTranspositionCheck()
+    checkLineComplete()
   },
-  animation: {
-    enabled: true,
-    duration: 200,
-  },
-  movable: {
-    free: false,
-    color: 'white' as 'white' | 'black',
-    showDests: true,
-    events: {},
-  },
-  drawable: {
-    enabled: false,
-  },
-})
-
-watch(
-  color,
-  (newColor) => {
-    boardApi.value?.toggleOrientation()
-    game.value.reset()
-    boardConfig.orientation = newColor
-    updateBoard()
-
-    if (newColor === 'black') {
-      setTimeout(() => {
-        makeOpponentMove()
-      }, 500)
-    } else {
-      const availableMoves = Object.keys(repertoireStore.currentRepertoire)
-      if (availableMoves.length > 0) {
-        emit(
-          'showToast',
-          `New session started! Available moves: ${availableMoves.join(', ')}`,
-          'info',
-        )
-      }
-    }
-  },
-  { immediate: true },
+  () => emit('showToast', 'No opponent responses available for this position.', 'info')
 )
 
+// Popup refs
+const lineCompletePopup = ref<{ show: () => void } | null>(null)
+const transpositionPopup = ref<{
+  show: (path: string[], onConfirm: () => void, onCancel: () => void) => void
+} | null>(null)
+
+// Watch for color changes
+watch(trainingSession.currentColor, handleColorChange)
+
+// Watch for repertoire navigation (when clicking on moves in repertoire panel)
 watch(
   () => repertoireStore.gameHistory,
   (newHistory) => {
-    const newGame = new Chess()
-    for (const move of newHistory) {
-      try {
-        newGame.move(move)
-      } catch (e) {
-        console.error(`Invalid move in history: ${move}`, e)
-      }
-    }
-
-    if (newGame.fen() !== game.value.fen()) {
-      game.value = newGame
-      updateBoard()
-    }
+    // Rebuild game from history when navigating via repertoire panel
+    chessGame.reset()
+    chessGame.rebuildFromHistory(newHistory)
+    boardConfig.updatePosition()
   },
-  { deep: true },
+  { deep: true }
 )
 
 onMounted(async () => {
   await repertoireStore.loadRepertoire()
+  boardConfig.initializeOrientation(trainingSession.currentColor.value)
 
-  // Wait a bit for the board to be created
   setTimeout(() => {
-    updateBoard()
-
-    // If training as black, opponent (white) should make the first move
-    // If training as white, player should move first (no opponent move needed)
-    if (color.value === 'black') {
-      setTimeout(() => {
-        makeOpponentMove()
-      }, 500)
-    } else {
-      // Show available opening moves for white
-      const availableMoves = Object.keys(repertoireStore.currentRepertoire)
-      const currentTurn = getCurrentTurn()
-      if (availableMoves.length > 0) {
-        emit(
-          'showToast',
-          `Your turn! (${currentTurn} to move) Available moves: ${availableMoves.join(', ')}`,
-          'info',
-        )
-      } else {
-        emit('showToast', 'No repertoire loaded. Use Edit Mode to add moves.', 'info')
-      }
-    }
+    boardConfig.updatePosition()
+    startInitialTurn()
   }, 100)
 })
 
-function handleMove({ from, to }: { from: string; to: string }) {
-  // Check whose turn it is BEFORE making the move
-  const turnBeforeMove = getCurrentTurn()
-
-  // In normal training mode, only allow moves when it's the player's turn
-  if (!isEditMode.value && turnBeforeMove !== color.value) {
-    emit('showToast', `Wait for opponent's move! It's ${turnBeforeMove}'s turn.`, 'error')
-    return
-  }
-
-  const move = game.value.move({
-    from,
-    to,
-    promotion: 'q',
-  })
-
-  if (move === null) {
-    emit('showToast', 'Invalid chess move!', 'error')
-    updateBoard()
-    return
-  }
-
-  const moveNotation = move.san
-
-  if (isEditMode.value) {
-    // In edit mode, allow any legal move and add it to repertoire
-    repertoireStore.addMoveToRepertoire(repertoireStore.currentLine, moveNotation)
-    repertoireStore.makeMove(moveNotation)
-    emit('showToast', `Added move ${moveNotation} to repertoire`, 'success')
-    updateBoard()
-
-    // Check for transposition in Edit Mode
-    const transposition = repertoireStore.findTransposition(game.value.fen())
-    if (transposition) {
-      transpositionPopup.value?.show(
-        transposition.path,
-        () => {
-          // Confirm: Jump to transposition
-          repertoireStore.navigateToPosition(transposition.path, transposition.color)
-          emit('showToast', 'Jumped to transposition!', 'success')
-        },
-        () => {
-          // Cancel: Stay here
-        },
-      )
-    }
-    return
-  }
-
-  // Normal training mode - check if move is in repertoire
-
-  if (repertoireStore.isValidMove(moveNotation)) {
-    repertoireStore.makeMove(moveNotation)
-    emit('showToast', 'Correct move!', 'success')
-    updateBoard()
-
-    // Check for transposition
-    const transposition = repertoireStore.findTransposition(game.value.fen())
-    if (transposition) {
-      transpositionPopup.value?.show(
-        transposition.path,
-        () => {
-          // Confirm: Jump to transposition
-          repertoireStore.navigateToPosition(transposition.path, transposition.color)
-          emit('showToast', 'Jumped to transposition!', 'success')
-        },
-        () => {
-          // Cancel: Continue here (if possible)
-          // If there are no moves here but it's a transposition, maybe we should force jump?
-          // But for now let's just stay.
-          continueAfterPlayerMove()
-        },
-      )
-      return
-    }
-
-    continueAfterPlayerMove()
+function startInitialTurn() {
+  if (trainingSession.currentColor.value === 'black' && !trainingSession.isEditMode.value) {
+    opponentEngine.schedule(500)
   } else {
-    game.value.undo()
-    emit('showToast', 'Not in your repertoire! Try again.', 'error')
-    updateBoard()
+    const availableMoves = trainingSession.getAvailableMoves()
+    if (availableMoves.length > 0) {
+      emit('showToast', `Your turn! Available moves: ${availableMoves.join(', ')}`, 'info')
+    } else {
+      emit('showToast', 'No repertoire loaded. Use Edit Mode to add moves.', 'info')
+    }
+  }
+}
+
+function handleColorChange(newColor: 'white' | 'black') {
+  chessGame.reset()
+  boardConfig.toggleOrientation()
+  boardConfig.setOrientation(newColor)
+  boardConfig.updatePosition()
+
+  if (newColor === 'black' && !trainingSession.isEditMode.value) {
+    opponentEngine.schedule(500)
+  } else {
+    const availableMoves = trainingSession.getAvailableMoves()
+    if (availableMoves.length > 0) {
+      emit(
+        'showToast',
+        `New session started! Available moves: ${availableMoves.join(', ')}`,
+        'info',
+      )
+    }
+  }
+}
+
+function handleMove({ from, to }: { from: string; to: string }) {
+  // Check whose turn it is before making the move
+  if (
+    !trainingSession.isEditMode.value &&
+    chessGame.currentTurn.value !== trainingSession.currentColor.value
+  ) {
+    emit(
+      'showToast',
+      `Wait for opponent's move! It's ${chessGame.currentTurn.value}'s turn.`,
+      'error',
+    )
+    return
+  }
+
+  const moveResult = chessGame.makeMove(from, to)
+
+  if (!moveResult) {
+    emit('showToast', 'Invalid chess move!', 'error')
+    boardConfig.updatePosition()
+    return
+  }
+
+  const result = trainingSession.handlePlayerMove(moveResult.san, chessGame.currentFen.value)
+
+  if (!result.success) {
+    if (result.undoRequired) {
+      chessGame.undo()
+    }
+    emit('showToast', result.message, 'error')
+    boardConfig.updatePosition()
+    return
+  }
+
+  emit('showToast', result.message, 'success')
+  boardConfig.updatePosition()
+
+  if (result.checkTransposition) {
+    handleTranspositionCheck(result.continueTraining)
+  } else if (result.continueTraining) {
+    continueAfterPlayerMove()
   }
 }
 
 function continueAfterPlayerMove() {
-  // Check if line is complete (no more moves for opponent)
-  const nextMoves = Object.keys(repertoireStore.currentRepertoire).filter((k) => k !== 'name')
-  if (nextMoves.length === 0) {
+  if (trainingSession.shouldShowLineComplete()) {
     lineCompletePopup.value?.show()
   } else {
-    // After player move, opponent should respond
-    setTimeout(() => {
-      makeOpponentMove()
-    }, 300)
+    opponentEngine.schedule(300)
   }
 }
 
-function makeOpponentMove() {
-  const opponentMove = repertoireStore.getRandomOpponentMove()
+function handleTranspositionCheck(shouldContinue = false) {
+  const transposition = repertoireStore.findTransposition(chessGame.currentFen.value)
 
-  if (opponentMove) {
-    const move = game.value.move(opponentMove)
-    if (move) {
-      repertoireStore.makeMove(opponentMove)
-      lastOpponentMove.value = opponentMove
-      updateBoard()
-      emit('showToast', `Opponent played: ${opponentMove}`, 'info')
-
-      // Check for transposition after opponent move
-      const transposition = repertoireStore.findTransposition(game.value.fen())
-      if (transposition) {
-        transpositionPopup.value?.show(
-          transposition.path,
-          () => {
-            repertoireStore.navigateToPosition(transposition.path, transposition.color)
-            emit('showToast', 'Jumped to transposition!', 'success')
-          },
-          () => {
-            // Stay here
-            checkLineComplete()
-          },
-        )
-        return
-      }
-
-      checkLineComplete()
-    }
-  } else {
-    emit('showToast', 'No opponent responses available for this position.', 'info')
+  if (transposition) {
+    transpositionPopup.value?.show(
+      transposition.path,
+      () => {
+        // Confirm: Jump to transposition
+        repertoireStore.navigateToPosition(transposition.path, transposition.color)
+        emit('showToast', 'Jumped to transposition!', 'success')
+        boardConfig.updatePosition()
+      },
+      () => {
+        // Cancel: Continue here if in training mode
+        if (shouldContinue && !trainingSession.isEditMode.value) {
+          continueAfterPlayerMove()
+        }
+      },
+    )
+  } else if (shouldContinue && !trainingSession.isEditMode.value) {
+    continueAfterPlayerMove()
   }
 }
 
 function checkLineComplete() {
-  // Check if line is complete (no more moves for player)
-  const nextMoves = Object.keys(repertoireStore.currentRepertoire).filter((k) => k !== 'name')
-  if (nextMoves.length === 0) {
+  if (trainingSession.shouldShowLineComplete()) {
     lineCompletePopup.value?.show()
   }
 }
 
 function rollback() {
-  if (repertoireStore.currentLine.length >= 1) {
-    const currentTurn = getCurrentTurn()
+  if (repertoireStore.currentLine.length < 1) return
 
-    // Undo back to the player's turn
-    // If it's currently opponent's turn, undo the user's last move
-    if (currentTurn !== color.value) {
-      game.value.undo()
-      repertoireStore.rollbackMove()
-    }
-    // If it's currently player's turn, we might need to undo an opponent move too
-    else if (repertoireStore.currentLine.length >= 2) {
-      // Undo opponent move and user move to get back to player's turn
-      game.value.undo() // Undo opponent move
-      repertoireStore.rollbackMove()
-      game.value.undo() // Undo user move
-      repertoireStore.rollbackMove()
-    }
-
-    updateBoard()
-    emit('showToast', 'Position reset for retry', 'info')
-  }
+  trainingSession.rollback()
+  boardConfig.updatePosition()
+  emit('showToast', 'Position reset for retry', 'info')
 }
 
 function cancelOpponentMove() {
-  if (lastOpponentMove.value && repertoireStore.currentLine.length > 0) {
-    // Undo only the opponent's last move
-    game.value.undo()
-    repertoireStore.rollbackMove()
-    lastOpponentMove.value = null
-    updateBoard()
-    emit('showToast', 'Opponent move canceled. Try a different response.', 'info')
+  if (!canCancelOpponent.value) return
 
-    // Allow opponent to make a different move
-    setTimeout(() => {
-      makeOpponentMove()
-    }, 500)
-  }
+  chessGame.undo()
+  repertoireStore.rollbackMove()
+  boardConfig.updatePosition()
+  emit('showToast', 'Opponent move canceled. Requesting different response.', 'info')
+
+  opponentEngine.schedule(500)
 }
 
 function toggleEditMode() {
-  isEditMode.value = !isEditMode.value
-  if (isEditMode.value) {
+  opponentEngine.clearAll()
+  const newMode = trainingSession.toggleEditMode()
+
+  if (newMode) {
     emit('showToast', 'Edit mode enabled. You can play both colors to add moves.', 'info')
   } else {
     emit('showToast', 'Edit mode disabled. Back to training mode.', 'info')
@@ -333,18 +219,14 @@ function toggleEditMode() {
 }
 
 function newSession() {
-  game.value.reset()
-  repertoireStore.startNewSession(color.value)
-  updateBoard()
+  opponentEngine.clearAll()
+  trainingSession.startSession(trainingSession.currentColor.value)
+  boardConfig.updatePosition()
 
-  // If training as black, opponent (white) should make the first move
-  if (color.value === 'black') {
-    setTimeout(() => {
-      makeOpponentMove()
-    }, 500)
+  if (trainingSession.currentColor.value === 'black') {
+    opponentEngine.schedule(500)
   } else {
-    // Show available opening moves for white
-    const availableMoves = Object.keys(repertoireStore.currentRepertoire)
+    const availableMoves = trainingSession.getAvailableMoves()
     if (availableMoves.length > 0) {
       emit(
         'showToast',
@@ -358,41 +240,39 @@ function newSession() {
 }
 
 function switchColor(orientation?: 'white' | 'black') {
+  opponentEngine.clearAll()
+
   if (orientation) {
-    debugger
     repertoireStore.startNewSession(orientation)
     return
   }
-  const newColor = color.value === 'white' ? 'black' : 'white'
+
+  const newColor = trainingSession.currentColor.value === 'white' ? 'black' : 'white'
   repertoireStore.startNewSession(newColor)
 }
 
-function updateBoard() {
-  const currentFen = game.value.fen()
-
-  // Update board position using API
-  if (boardApi.value) {
-    boardApi.value.setPosition(currentFen)
-  }
-
-  // Update config for piece movement and orientation
-  // Only allow the current turn's pieces to move
-  const currentTurn = getCurrentTurn()
-  boardConfig.movable.color = currentTurn
-  boardConfig.orientation = color.value
-}
-
-function getCurrentTurn(): 'white' | 'black' {
-  return game.value.turn() === 'w' ? 'white' : 'black'
+function requestNewWhiteMove() {
+  opponentEngine.clearAll()
+  trainingSession.requestNewWhiteMove()
+  boardConfig.updatePosition()
 }
 
 // Computed properties for control panel
 const canCancelOpponent = computed(() => {
-  return lastOpponentMove.value !== null && repertoireStore.currentLine.length > 0
+  if (trainingSession.isEditMode.value || repertoireStore.currentLine.length === 0) return false
+
+  const isPlayerTurn = chessGame.currentTurn.value === trainingSession.currentColor.value
+  return isPlayerTurn && repertoireStore.currentLine.length > 0
 })
 
 const canRollback = computed(() => {
   return repertoireStore.currentLine.length > 0
+})
+
+const canRequestNewWhiteMove = computed(() => {
+  return (
+    trainingSession.currentColor.value === 'black' && repertoireStore.currentLine.length <= 1
+  )
 })
 
 // Expose functions for external control
@@ -402,9 +282,11 @@ defineExpose({
   rollback,
   cancelOpponentMove,
   toggleEditMode,
+  requestNewWhiteMove,
   canCancelOpponent,
   canRollback,
-  isEditMode,
+  canRequestNewWhiteMove,
+  isEditMode: trainingSession.isEditMode,
 })
 </script>
 
