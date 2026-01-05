@@ -24,7 +24,7 @@ describe('ChessBoard Component Integration Tests', () => {
     repertoireStore = useRepertoireStore()
 
     // Set up basic repertoire
-    repertoireStore.white = {
+    repertoireStore.repertoire.white = {
       e4: {
         e5: {
           Nf3: {
@@ -34,7 +34,7 @@ describe('ChessBoard Component Integration Tests', () => {
         c5: {}
       }
     }
-    repertoireStore.black = {
+    repertoireStore.repertoire.black = {
       e4: {
         e5: {}
       }

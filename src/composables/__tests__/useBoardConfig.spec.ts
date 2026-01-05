@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { computed } from 'vue'
+import { computed, type ComputedRef } from 'vue'
 import { useBoardConfig } from '../useBoardConfig'
 import { useChessGame } from '../useChessGame'
 
 describe('useBoardConfig', () => {
   let chessGame: ReturnType<typeof useChessGame>
   let boardConfig: ReturnType<typeof useBoardConfig>
-  let currentColor: ReturnType<typeof computed<'white' | 'black'>>
+  let currentColor: ComputedRef<'white' | 'black'>
 
   beforeEach(() => {
     chessGame = useChessGame()

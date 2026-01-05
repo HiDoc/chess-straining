@@ -29,7 +29,7 @@ describe('useOpponentEngine', () => {
     )
 
     // Set up basic repertoire
-    repertoireStore.white = {
+    repertoireStore.repertoire.white = {
       e4: {
         e5: {
           Nf3: {}
@@ -37,8 +37,8 @@ describe('useOpponentEngine', () => {
         c5: {}
       }
     }
-    repertoireStore.currentColor = 'black'
-    repertoireStore.currentRepertoire = repertoireStore.white
+    repertoireStore.currentColor = 'white'
+    repertoireStore.currentLine = []
   })
 
   afterEach(() => {
@@ -138,7 +138,7 @@ describe('useOpponentEngine', () => {
 
     it('should return null when no moves available', () => {
       // Empty repertoire
-      repertoireStore.currentRepertoire = {}
+      repertoireStore.repertoire.white = {}
 
       const move = opponentEngine.makeMove()
 
@@ -148,7 +148,7 @@ describe('useOpponentEngine', () => {
     })
 
     it('should call onNoMovesAvailable callback when no moves', () => {
-      repertoireStore.currentRepertoire = {}
+      repertoireStore.repertoire.white = {}
 
       opponentEngine.makeMove()
 
@@ -161,7 +161,6 @@ describe('useOpponentEngine', () => {
       repertoireStore.makeMove('e4')
 
       // Now opponent (black) can respond
-      repertoireStore.currentRepertoire = repertoireStore.white.e4
 
       const move = opponentEngine.makeMove()
 
@@ -173,7 +172,6 @@ describe('useOpponentEngine', () => {
       // Set up position where black has multiple responses
       chessGame.makeMoveByNotation('e4')
       repertoireStore.makeMove('e4')
-      repertoireStore.currentRepertoire = repertoireStore.white.e4
 
       const movesSelected = new Set<string>()
 
@@ -309,7 +307,6 @@ describe('useOpponentEngine', () => {
       // Player (white) makes a move
       chessGame.makeMoveByNotation('e4')
       repertoireStore.makeMove('e4')
-      repertoireStore.currentRepertoire = repertoireStore.white.e4
 
       // Opponent responds
       const opponentMove = opponentEngine.makeMove()

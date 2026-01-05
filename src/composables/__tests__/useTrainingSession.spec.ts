@@ -16,14 +16,14 @@ describe('useTrainingSession', () => {
     trainingSession = useTrainingSession(chessGame, repertoireStore)
 
     // Set up a basic repertoire for testing
-    repertoireStore.white = {
+    repertoireStore.repertoire.white = {
       e4: {
         e5: {
           Nf3: {}
         }
       }
     }
-    repertoireStore.black = {
+    repertoireStore.repertoire.black = {
       e4: {
         e5: {}
       }
@@ -48,7 +48,7 @@ describe('useTrainingSession', () => {
   describe('handlePlayerMove - Training Mode', () => {
     beforeEach(() => {
       repertoireStore.currentColor = 'white'
-      repertoireStore.currentRepertoire = repertoireStore.white
+      repertoireStore.currentLine = []
     })
 
     it('should accept valid repertoire move', () => {
@@ -89,7 +89,7 @@ describe('useTrainingSession', () => {
     beforeEach(() => {
       trainingSession.toggleEditMode()
       repertoireStore.currentColor = 'white'
-      repertoireStore.currentRepertoire = repertoireStore.white
+      repertoireStore.currentLine = []
     })
 
     it('should accept any move in edit mode', () => {
@@ -119,28 +119,32 @@ describe('useTrainingSession', () => {
 
   describe('shouldShowLineComplete', () => {
     it('should return true when no more moves available and line has moves', () => {
-      repertoireStore.currentRepertoire = {}
+      repertoireStore.repertoire.white = { e4: { e5: {} } }
+      repertoireStore.currentColor = 'white'
       repertoireStore.currentLine = ['e4', 'e5']
 
       expect(trainingSession.shouldShowLineComplete()).toBe(true)
     })
 
     it('should return false when moves are available', () => {
-      repertoireStore.currentRepertoire = { e4: {} }
+      repertoireStore.repertoire.white = { e4: { e4: {} } }
+      repertoireStore.currentColor = 'white'
       repertoireStore.currentLine = ['e4']
 
       expect(trainingSession.shouldShowLineComplete()).toBe(false)
     })
 
     it('should return false when line is empty', () => {
-      repertoireStore.currentRepertoire = {}
+      repertoireStore.repertoire.white = {}
+      repertoireStore.currentColor = 'white'
       repertoireStore.currentLine = []
 
       expect(trainingSession.shouldShowLineComplete()).toBe(false)
     })
 
     it('should ignore "name" property in repertoire', () => {
-      repertoireStore.currentRepertoire = { name: 'Test Line' }
+      repertoireStore.repertoire.white = { e4: { name: 'Test Line' } }
+      repertoireStore.currentColor = 'white'
       repertoireStore.currentLine = ['e4']
 
       expect(trainingSession.shouldShowLineComplete()).toBe(true)
@@ -149,11 +153,13 @@ describe('useTrainingSession', () => {
 
   describe('getAvailableMoves', () => {
     it('should return list of available moves', () => {
-      repertoireStore.currentRepertoire = {
+      repertoireStore.repertoire.white = {
         e4: {},
         d4: {},
         Nf3: {}
       }
+      repertoireStore.currentColor = 'white'
+      repertoireStore.currentLine = []
 
       const moves = trainingSession.getAvailableMoves()
 
@@ -164,11 +170,13 @@ describe('useTrainingSession', () => {
     })
 
     it('should exclude "name" property', () => {
-      repertoireStore.currentRepertoire = {
+      repertoireStore.repertoire.white = {
         name: 'Opening',
         e4: {},
         d4: {}
       }
+      repertoireStore.currentColor = 'white'
+      repertoireStore.currentLine = []
 
       const moves = trainingSession.getAvailableMoves()
 
@@ -177,7 +185,9 @@ describe('useTrainingSession', () => {
     })
 
     it('should return empty array when no moves available', () => {
-      repertoireStore.currentRepertoire = {}
+      repertoireStore.repertoire.white = {}
+      repertoireStore.currentColor = 'white'
+      repertoireStore.currentLine = []
 
       const moves = trainingSession.getAvailableMoves()
 
@@ -343,7 +353,6 @@ describe('useTrainingSession', () => {
 
       // After opponent moves e5, check if line is complete
       repertoireStore.currentLine = ['e4', 'e5']
-      repertoireStore.currentRepertoire = repertoireStore.white.e4.e5
 
       const hasMoreMoves = !trainingSession.shouldShowLineComplete()
       expect(hasMoreMoves).toBe(true) // Nf3 is available

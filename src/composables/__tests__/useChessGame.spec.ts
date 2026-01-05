@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useChessGame } from '../useChessGame'
 
 describe('useChessGame', () => {
@@ -167,7 +167,7 @@ describe('useChessGame', () => {
 
     it('should skip invalid moves and log errors', () => {
       // This tests that invalid moves don't break the rebuild
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { })
       const moves = ['e4', 'invalid', 'e5']
       chessGame.rebuildFromHistory(moves)
 
